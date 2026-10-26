@@ -62,8 +62,33 @@ const armMat=mat(0xc98f68),sleeveMat=mat(0x38636a);
 const arm=cylinder(viewModel,0,-.12,.12,.085,.11,.38,sleeveMat,10);arm.rotation.z=-.42;
 const hand=sphere(viewModel,.015,.015,-.055,.105,armMat,.8);hand.scale.set(1,.72,1.25);
 const rodModel=new THREE.Group();viewModel.add(rodModel);
-const rodShaft=cylinder(rodModel,-.13,.18,-.28,.025,.012,.95,mat(0x80552f),8);rodShaft.rotation.x=-.25;rodShaft.rotation.z=-.27;
-const rodGrip=cylinder(rodModel,-.08,.08,.04,.055,.05,.28,mat(0x3a3029),8);rodGrip.rotation.z=-.27;
+// Vara detalhada: blank cônico, empunhadura de cortiça, reel e passadores metálicos.
+const rodBlankMat=new THREE.MeshStandardMaterial({color:0x263e42,roughness:.32,metalness:.28});
+const rodAccentMat=new THREE.MeshStandardMaterial({color:0xd8b56c,roughness:.3,metalness:.72});
+const rodMetalMat=new THREE.MeshStandardMaterial({color:0x9baeb0,roughness:.25,metalness:.82});
+const corkMat=new THREE.MeshStandardMaterial({color:0x9a6840,roughness:.88});
+const rubberMat=new THREE.MeshStandardMaterial({color:0x202729,roughness:.7});
+const rodAxis={x:-.13,y:.18,z:-.28,rx:-.25,rz:-.27,len:.95};
+const rodShaft=new THREE.Mesh(new THREE.CylinderGeometry(.006,.027,.95,10,1),rodBlankMat);
+rodShaft.position.set(rodAxis.x,rodAxis.y,rodAxis.z);rodShaft.rotation.set(rodAxis.rx,0,rodAxis.rz);rodShaft.castShadow=true;rodModel.add(rodShaft);
+function rodPoint(t){const y=(t-.5)*rodAxis.len;const c=Math.cos(rodAxis.rx),sn=Math.sin(rodAxis.rx),cz=Math.cos(rodAxis.rz),sz=Math.sin(rodAxis.rz);return new THREE.Vector3(rodAxis.x+(-y*sz),rodAxis.y+y*c,rodAxis.z+y*sn)}
+function rodBand(t,r,depth,material){const p=rodPoint(t),m=new THREE.Mesh(new THREE.CylinderGeometry(r*.88,r,depth,10),material);m.position.copy(p);m.rotation.set(rodAxis.rx,0,rodAxis.rz);rodModel.add(m);return m}
+rodBand(.08,.029,.035,rodAccentMat);rodBand(.14,.027,.018,rodMetalMat);rodBand(.88,.009,.018,rodAccentMat);rodBand(.97,.007,.025,rodMetalMat);
+// Cabo com anéis antiderrapantes e ponteira.
+const rodGrip=cylinder(rodModel,rodAxis.x-.015,rodAxis.y-.34,rodAxis.z+.085,.047,.052,.29,corkMat,10);rodGrip.rotation.set(rodAxis.rx,0,rodAxis.rz);
+const gripButt=cylinder(rodModel,rodAxis.x-.015,rodAxis.y-.49,rodAxis.z+.125,.052,.052,.045,rubberMat,10);gripButt.rotation.set(rodAxis.rx,0,rodAxis.rz);
+const gripRing=cylinder(rodModel,rodAxis.x-.015,rodAxis.y-.19,rodAxis.z+.045,.049,.049,.025,rodMetalMat,10);gripRing.rotation.set(rodAxis.rx,0,rodAxis.rz);
+// Carretilha lateral com carretel, manivela e botão.
+const reelBody=cylinder(rodModel,-.205,-.005,-.12,.105,.105,.105,mat(0x263238),12);reelBody.rotation.x=Math.PI/2;
+const reelSpool=cylinder(rodModel,-.205,-.005,-.185,.075,.075,.035,rodMetalMat,12);reelSpool.rotation.x=Math.PI/2;
+const reelHub=sphere(rodModel,-.205,-.005,-.207,.026,rodAccentMat,.8);
+const reelArm=box(rodModel,-.265,-.075,-.13,.018,.105,.025,rodMetalMat);
+const reelKnob=sphere(rodModel,-.265,-.13,-.13,.027,rubberMat,.8);
+// Passadores pequenos ao longo da vara; todos seguem o eixo do blank.
+for(const t of [.36,.56,.72,.84,.92]){
+ const p=rodPoint(t);const guide=new THREE.Mesh(new THREE.TorusGeometry(.018-(t*.009),.003,5,10),rodMetalMat);
+ guide.position.copy(p);guide.rotation.set(rodAxis.rx,0,rodAxis.rz);guide.scale.set(.8,1,1);rodModel.add(guide);
+}
 const fishingLineGeom=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-.26,.61,-.4),new THREE.Vector3(-.3,.45,-1.2)]);
 const fishingLine=new THREE.Line(fishingLineGeom,new THREE.LineBasicMaterial({color:0xf4fff9,transparent:true,opacity:.95}));
 fishingLine.frustumCulled=false;rodModel.add(fishingLine);
@@ -81,7 +106,7 @@ function updateViewModel(now){
  harpoon.visible=!rodActive&&player.weapon===3;harpoonHead.visible=!rodActive&&player.weapon===3;
  hand.visible=true;arm.visible=true;
  const idle=Math.sin(now*.003)*.012;
- rodShaft.rotation.z=-.27+idle;rodGrip.rotation.z=-.27+idle;
+ rodModel.rotation.z=idle;rodModel.rotation.x=player.cast?-.12+Math.sin(now*.018)*.025:-.0;
  // A linha nasce exatamente na ponta da vara e termina no ponto de pesca.
  const p=fishingLineGeom.attributes.position;
  p.setXYZ(0,-.26,.61,-.4);
