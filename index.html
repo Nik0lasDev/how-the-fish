@@ -96,6 +96,7 @@ fishingLineGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Flo
 const fishingLine=new THREE.Line(fishingLineGeom,new THREE.LineBasicMaterial({color:0xf4fff9,transparent:true,opacity:.96}));
 fishingLine.frustumCulled=false;fishingLine.visible=false;scene.add(fishingLine);
 const fishingLineTip=new THREE.Vector3();
+const fishingCastPoint=new THREE.Vector3();let fishingLineLatched=false;
 const fishingLineEnd=new THREE.Vector3();
 const fishingLineDirection=new THREE.Vector3();
 const fishingLinePoint=new THREE.Vector3();
@@ -104,18 +105,26 @@ function updateFishingLine(now){
  // Ponta real da haste (mesmo referencial do modelo), convertida para coordenadas do mundo.
  fishingLineTip.copy(rodPoint(1));rodModel.localToWorld(fishingLineTip);
  const positions=fishingLineGeom.attributes.position;
- if(!player.cast){fishingLine.visible=false;return}
- camera.getWorldDirection(fishingLineDirection);
- // Lança na direção em que o jogador olha; o ponto final repousa próximo da superfície da água.
- const reach=Math.min(rods[player.rod].reach,18);
- fishingLineEnd.copy(fishingLineTip).addScaledVector(fishingLineDirection,reach);
- const waterY=water.position.y+.025;
- const pitchFactor=Math.max(-.18,Math.min(.18,fishingLineDirection.y*.35));
- fishingLineEnd.y=waterY+pitchFactor;
+ if(!player.cast){fishingLine.visible=false;fishingLineLatched=false;return}
+ const waterY=water.position.y+.018;
+ // Calcula o ponto de pouso uma única vez no lançamento: mexer a câmera depois
+ // não desloca a ponta da linha nem faz parecer que ela está saindo da água.
+ if(!fishingLineLatched){
+  camera.getWorldDirection(fishingLineDirection);
+  const reach=Math.min(rods[player.rod].reach,18);
+  const verticalDistance=waterY-fishingLineTip.y;
+  let distance=reach;
+  if(fishingLineDirection.y<-.025){
+   const intersection=verticalDistance/fishingLineDirection.y;
+   if(intersection>0)distance=Math.min(reach,intersection);
+  }
+  fishingCastPoint.copy(fishingLineTip).addScaledVector(fishingLineDirection,distance);
+  const dx=fishingCastPoint.x-fishingLineTip.x,dz=fishingCastPoint.z-fishingLineTip.z;
+  if(Math.hypot(dx,dz)<2){fishingCastPoint.x=fishingLineTip.x+Math.sin(player.yaw)*2;fishingCastPoint.z=fishingLineTip.z+Math.cos(player.yaw)*2}
+  fishingCastPoint.y=waterY;fishingLineLatched=true;
+ }
+ fishingLineEnd.copy(fishingCastPoint);fishingLineEnd.y=waterY;
  const dx=fishingLineEnd.x-fishingLineTip.x,dz=fishingLineEnd.z-fishingLineTip.z;
- const horizontal=Math.hypot(dx,dz);
- // Se estiver olhando quase verticalmente, mantém um alcance horizontal mínimo.
- if(horizontal<2){fishingLineEnd.x=fishingLineTip.x+Math.sin(player.yaw)*2;fishingLineEnd.z=fishingLineTip.z+Math.cos(player.yaw)*2}
  for(let i=0;i<=LINE_SEGMENTS;i++){
   const t=i/LINE_SEGMENTS;
   const sag=Math.sin(Math.PI*t)*(.12+Math.min(1.5,Math.hypot(fishingLineEnd.x-fishingLineTip.x,fishingLineEnd.z-fishingLineTip.z)*.035));
@@ -175,7 +184,7 @@ function startGame(){started=true;paused=false;$('menu').classList.add('hidden')
 $('startBtn').onclick=startGame;$('helpBtn').onclick=()=>toast('F lança/recolhe. Clique esquerdo ataca. E interage e vende. Q abre a loja.');$('closeShop').onclick=closeShop;$('resumeBtn').onclick=()=>{$('pause').classList.add('hidden');paused=false;renderer.domElement.requestPointerLock?.()};$('pauseShop').onclick=()=>{$('pause').classList.add('hidden');openShop()};
 function sellAll(){if(!player.catches.length)return toast('Você não tem capturas para vender.');let total=0;for(const f of player.catches)total+=f.value;player.cash+=total;toast('Venda concluída: +$'+total);player.catches=[];updateHUD()}
 function showCatch(f){catchOpen=true;paused=true;$('catchTitle').textContent=f.name+'!';$('catchDesc').textContent='Uma captura '+(f.rare?'rara ':'')+'de valor $'+f.value+'. A criatura está cansada e pronta para ser guardada.';$('catchModal').classList.remove('hidden');$('keepCatch').onclick=()=>{player.catches.push(f);$('catchModal').classList.add('hidden');catchOpen=false;paused=false;updateHUD();renderer.domElement.requestPointerLock?.()};$('sellCatch').onclick=()=>{player.cash+=f.value;$('catchModal').classList.add('hidden');catchOpen=false;paused=false;updateHUD();toast('Vendido por $'+f.value);renderer.domElement.requestPointerLock?.()}}
-function castLine(){if(player.cast){player.cast=false;if(player.fish){const f=player.fish;player.fish=null;showCatch(f);spawnFishingEnemy()}else toast('Você recolheu a linha vazia.');return}const rod=rods[player.rod];player.cast=true;player.castTime=0;player.biteTime=3+Math.random()*5;player.fish=null;showHint('Linha lançada... espere uma mordida!');toast('Linha lançada. Fique atento!')}
+function castLine(){if(player.cast){player.cast=false;if(player.fish){const f=player.fish;player.fish=null;showCatch(f);spawnFishingEnemy()}else toast('Você recolheu a linha vazia.');return}const rod=rods[player.rod];player.cast=true;fishingLineLatched=false;player.castTime=0;player.biteTime=3+Math.random()*5;player.fish=null;showHint('Linha lançada... espere uma mordida!');toast('Linha lançada. Fique atento!')}
 function attack(){if(player.toolMode==='rod'){castLine();return}attackTime=performance.now();if(player.weapon===3){const target=nearestCreature(9);if(target){target.data.hp-=weapons[player.weapon].damage;toast('Arpão atingiu '+target.data.name+'!');if(target.data.hp<=0)defeat(target)}else toast('Nenhuma criatura no alcance.');return}const target=nearestCreature(weapons[player.weapon].range);if(!target){toast('Chegue mais perto de uma criatura.');return}target.data.hp-=weapons[player.weapon].damage;target.mesh.position.y+=.18;toast(target.data.name+' · '+Math.max(0,target.data.hp)+' HP');if(target.data.hp<=0)defeat(target)}
 function nearestCreature(range){let best=null,bd=range;for(const o of interactables){if(!['creature','enemy'].includes(o.type)||o.data.alive===false)continue;const d=Math.hypot(o.x-player.x,o.z-player.z);if(d<bd){bd=d;best=o}}return best}
 function defeat(o){o.data.alive=false;world.remove(o.mesh);const idx=interactables.indexOf(o);if(idx>=0)interactables.splice(idx,1);if(o.data.boss){player.cash+=o.data.value;toast('CHEFE DERROTADO! Recompensa: '+o.data.value);updateHUD()}else{player.cash+=o.data.value;toast(o.data.name+' derrotado! Recompensa: '+o.data.value);updateHUD();if(Math.random()<.45)makeItem(o.x+(.5-Math.random()),o.z+(.5-Math.random()),'coins','Moedas do combate',8+Math.floor(Math.random()*12));}}
